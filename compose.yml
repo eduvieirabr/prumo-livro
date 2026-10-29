@@ -1,0 +1,109 @@
+# Plataforma de referência do livro (apêndice A). Sem GPU por padrão: o Ollama simulado responde.
+# Com GPU: docker compose --profile gpu up, e OLLAMA_URL=http://ollama:11434 nos serviços do Broker.
+x-app: &app
+  build: .
+  restart: unless-stopped
+  env_file: .env
+  depends_on:
+    criar-banco:
+      condition: service_completed_successfully
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_PASSWORD: ${PG_SENHA}
+      POSTGRES_DB: prumo
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d prumo"]
+      interval: 5s
+      retries: 20
+
+  criar-banco:                       # cria os esquemas e sai; rodar de novo não muda nada
+    build: .
+    command: python scripts/criar_banco.py postgresql://postgres:${PG_SENHA}@postgres:5432/prumo
+    environment:
+      MEM_APP_SENHA: ${MEM_APP_SENHA}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  prumo-id:                          # capítulo 9; start-dev é para estudo: em produção, start com banco
+    image: quay.io/keycloak/keycloak:26.0
+    command: start-dev
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_ADMIN_SENHA}
+      KC_HOSTNAME: ${PRUMO_ID_URL}             # um emissor só, de dentro ou de fora da rede
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"  # os serviços buscam chaves e tokens pela rede interna
+    volumes: [keycloak:/opt/keycloak/data]     # realm e segredos sobrevivem à recriação do contêiner
+    ports: ["8180:8080"]
+
+  ollama-simulado:                   # scripts/fake_ollama.py: o mesmo contrato, sem GPU
+    <<: *app
+    command: uvicorn scripts.fake_ollama:app --host 0.0.0.0 --port 11434
+
+  ollama:
+    image: ollama/ollama
+    profiles: [gpu]
+    environment:
+      OLLAMA_NUM_PARALLEL: ${VAGAS}
+      OLLAMA_FLASH_ATTENTION: "1"
+      OLLAMA_KV_CACHE_TYPE: q8_0
+    volumes: [ollama:/root/.ollama]
+    deploy:
+      resources:
+        reservations:
+          devices: [{driver: nvidia, count: 1, capabilities: [gpu]}]
+
+  broker-api:                        # capítulos 5, 7 e 9
+    <<: *app
+    command: uvicorn prumo.broker.api:app --host 0.0.0.0 --port 8080
+    environment:
+      BROKER_DSN: postgresql://postgres:${PG_SENHA}@postgres:5432/prumo
+      PRUMO_ID_EMISSOR: ${PRUMO_ID_URL}/realms/prumo
+      PRUMO_ID_JWKS: http://prumo-id:8080/realms/prumo/protocol/openid-connect/certs
+    ports: ["8080:8080"]
+
+  broker-vagas:                      # capítulos 6 e 7: uma thread por vaga de GPU
+    <<: *app
+    command: python -m prumo.servicos broker
+    environment:
+      BROKER_DSN: postgresql://postgres:${PG_SENHA}@postgres:5432/prumo
+      OLLAMA_URL: http://ollama-simulado:11434
+      SERVIDOR: gpu-1
+
+  central-api:                       # capítulo 16
+    <<: *app
+    command: uvicorn prumo.central.api:app --host 0.0.0.0 --port 8090
+    environment:
+      CENTRAL_DSN: postgresql://postgres:${PG_SENHA}@postgres:5432/prumo
+      PRUMO_ID_EMISSOR: ${PRUMO_ID_URL}/realms/prumo
+      PRUMO_ID_JWKS: http://prumo-id:8080/realms/prumo/protocol/openid-connect/certs
+    ports: ["8090:8090"]
+
+  parcelamentos-consumidor:          # capítulo 17
+    <<: *app
+    command: python -m prumo.servicos parcelamentos
+    environment:
+      PARCELAMENTOS_DSN: postgresql://postgres:${PG_SENHA}@postgres:5432/prumo
+      CENTRAL_URL: http://central-api:8090
+      PRUMO_ID_TOKEN_URL: http://prumo-id:8080/realms/prumo/protocol/openid-connect/token
+      CLIENTE_ID: prumo-parcelamentos
+      CLIENTE_SEGREDO: ${PARCELAMENTOS_SEGREDO}
+      INTERVALO_S: "60"
+
+  n8n:                               # capítulo 15: só na rede interna, sem nós de IA
+    image: n8nio/n8n:2.44.6
+    environment:
+      NODES_EXCLUDE: '["@n8n/n8n-nodes-langchain.agent", "@n8n/n8n-nodes-langchain.lmChatOpenAi"]'
+      EXECUTIONS_DATA_MAX_AGE: "168"
+      N8N_DIAGNOSTICS_ENABLED: "false"
+    volumes: [n8n:/home/node/.n8n]
+
+volumes:
+  pgdata:
+  ollama:
+  n8n:
+  keycloak:

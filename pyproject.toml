@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "prumo-livro"
+version = "0.7.0"
+description = "Código de exemplo do livro IA Local sob Pressão"
+requires-python = ">=3.12"
+dependencies = ["fastapi", "httpx", "uvicorn", "pdfplumber", "pytesseract", "psycopg[binary]", "pyjwt[crypto]", "openpyxl"]
+
+[project.optional-dependencies]
+dev = ["pytest", "reportlab"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[tool.setuptools.packages.find]
+include = ["prumo*"]
+
+[tool.setuptools.package-data]
+"*" = ["*.sql"]
