@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,6 +7,9 @@ name = "prumo-livro"
 version = "0.7.0"
 description = "Código de exemplo do livro IA Local sob Pressão"
 requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{name = "Eduardo Vieira"}]
 dependencies = ["fastapi", "httpx", "uvicorn", "pdfplumber", "pytesseract", "psycopg[binary]", "pyjwt[crypto]", "openpyxl"]
 
 [project.optional-dependencies]

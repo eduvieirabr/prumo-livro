@@ -37,4 +37,6 @@ leitura de PDF precisa do Tesseract com o idioma português instalado no sistema
 
 ## Licença
 
-⟦PREENCHER: licença do código⟧
+O código deste repositório está sob a licença MIT (arquivo `LICENSE`): pode ser copiado,
+adaptado e usado em projetos comerciais, mantendo o aviso de copyright. A licença vale só
+para o código; o texto do livro tem todos os direitos reservados.
